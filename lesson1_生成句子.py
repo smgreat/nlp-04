@@ -3,6 +3,8 @@ import re
 import pandas as pd
 from collections import Counter
 import jieba
+from functools import reduce
+from  operator import add, mul
 ###################################################################
 simple_grammar = """
 sentence => noun_phrase verb_phrase
@@ -50,6 +52,7 @@ number => 1 | 2 | 3
 #     return random.choice('蓝色的 | 好看的 | 小小的'.split('|')).split()[0]
 # def adj_star():
 #     return random.choice([lambda :'',lambda :adj()+adj_star()])()
+
 def create_grammar(grammar_str,split='=>',line_split='\n'):
     grammar={}
     for line in grammar_str.split(line_split):
@@ -62,7 +65,6 @@ choice=random.choice
 def generate(gram,target):
     if target not in gram:return target#终止符
     expand=[generate(gram,t) for t in choice(gram[target])]
-    #print(expand)
     return ''.join([e if e!='/n'else '\n' for e in expand if e!='null'])
 
 # exzample_grammar=create_grammar(simple_grammar,split='=>')
@@ -72,31 +74,64 @@ def generate(gram,target):
 #     print(sentence)
 
 ######################计算生成的句子的概率
-filename='H:/资料/NLP&CV/nlp/lesson1/sqlResult_1558435.csv'
-content=pd.read_csv(filename,encoding='gb18030',engine='python')
 
-#['id', 'author', 'source', 'content', 'feature', 'title', 'url']
-articles=content['content'].tolist()
-#print(articles[0])
-#print(len(articles))
-#89611
+def generate_article_txt(filename):
+    content = pd.read_csv(filename, encoding='gb18030', engine='python')
+    # ['id', 'author', 'source', 'content', 'feature', 'title', 'url']   ,row is :89611
+    articles = content['content'].tolist()
+    articles_clean = [''.join(token(str(a))) for a in articles]
+    with open('article_9k.txt', 'w')as f:
+        for a in articles_clean:
+            f.write(a + '\n')
+
 def token(string):
     #获得中文字符串
     return re.findall('\w+',string)
-with_jieba_cut=Counter(jieba.cut(articles[0]))
-#print(with_jieba_cut.most_common()[:10])
-#print(''.join(token(articles[0])))
-articles_clean=[''.join(token(str(a))) for  a in articles]
-#print(len(articles_clean))
-#89611
-# with open('article_9k.txt','w')as f:
-#     for a in articles_clean:
-#         f.write(a+'\n')
 def cut(string): return list(jieba.cut(string))
 TOKEN=[]
 for i,line in enumerate((open('article_9k.txt'))):
     if i%100==0:    print(i)
     if i>1000: break
     TOKEN+=cut(line)
-wordscount=Counter(TOKEN)
-print(wordscount['我们'])
+words_count=Counter(TOKEN)
+def prob_1(word):
+    return words_count[word] / len(TOKEN)
+print(words_count['我们'])
+TOKEN = [str(t) for t in TOKEN]
+TOKEN_2_GRAM = [''.join(TOKEN[i:i+2]) for i in range(len(TOKEN[:-2]))]
+words_count_2 = Counter(TOKEN_2_GRAM)
+def prob_1(word): return words_count[word] / len(TOKEN)
+def prob_2(word1, word2):
+    if word1 + word2 in words_count_2: return words_count_2[word1+word2] / len(TOKEN_2_GRAM)
+    else:
+        return 1 / len(TOKEN_2_GRAM)
+def get_probablity(sentence):
+    words = cut(sentence)
+    sentence_pro = 1
+    for i, word in enumerate(words[:-1]):
+        next_ = words[i + 1]
+        probability = prob_2(word, next_)
+        sentence_pro *= probability
+    return sentence_pro
+if __name__ == '__main__':
+    #filename = 'H:/资料/NLP&CV/nlp/lesson1/sqlResult_1558435.csv'
+    # articles=generate_article_txt(filename)
+    exzample_grammar=create_grammar(host,split='=')
+    for sen in [generate(gram=exzample_grammar, target='host') for i in range(10)]:
+        print('sentence: {} with Prb: {}'.format(sen, get_probablity(sen)))
+
+
+    #test
+    # need_compared = [
+    #     "今天晚上请你吃大餐，我们一起吃日料 明天晚上请你吃大餐，我们一起吃苹果",
+    #     "真事一只好看的小猫 真是一只好看的小猫",
+    #     "今晚我去吃火锅 今晚火锅去吃我",
+    #     "洋葱奶昔来一杯 养乐多绿来一杯"
+    # ]
+    # for s in need_compared:
+    #     s1, s2 = s.split()
+    #     p1, p2 = get_probablity(s1), get_probablity(s2)
+    #     better = s1 if p1 > p2 else s2
+    #     print('{} is more possible'.format(better))
+    #     print('-' * 4 + ' {} with probility {}'.format(s1, p1))
+    #     print('-' * 4 + ' {} with probility {}'.format(s2, p2))
